@@ -12,31 +12,39 @@ import java.io.*;
 
 public class Client
 {
+    static String clientId = "CLIENT_ID_007";
+
     public Client(String host, int tcpPortNumber)
+            throws IOException
     {
         Socket ioSocket;
         PrintWriter out;
         BufferedReader in;
-        String clientId = "CLIENT_ID_007";
-        
-        try {
+
+        for (;;)
+        {
             ioSocket = new Socket(host, tcpPortNumber);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        
-        System.out.println("Connection established.");
-        try {
+            System.out.println("Connection established.");
+
             out = new PrintWriter(ioSocket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(
                     ioSocket.getInputStream()));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        
+        
+            out.println(clientId + " " + "Hello, world!");
+            String message = readWholeMessage(in);
+            System.out.println("Received message: " + message);
+        
+            if (message.replaceAll("\n", "").matches(".*enough.*"))
+            {
+                System.out.println("Server's had enough, terminating.");
+                break;
+            }
+            else
+            {
+                System.out.println("Going on!");
+            }
         }
-        
-        
-        out.println(clientId + " " + "Hello, world!");
-        System.out.println("Received message: " + readWholeMessage(in));
     }
     
     private String readWholeMessage(BufferedReader in)
@@ -56,15 +64,18 @@ public class Client
     
     
     public static void connectToTCPPort(String hostNameOrIPAddress, int tcpPortNumber)
+            throws IOException
     {
         System.out.println("Connecting to " + hostNameOrIPAddress + ":" + tcpPortNumber);
         new Client(hostNameOrIPAddress, tcpPortNumber);
     }
     
     public static void main(String[] args)
+            throws IOException
     {
         String hostNameOrIPAddress = args[0];
         int tcpPortNumber = new Integer(args[1]);
+        clientId = args[2];
         
         connectToTCPPort(hostNameOrIPAddress, tcpPortNumber);
     }}

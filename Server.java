@@ -15,6 +15,8 @@ public class Server
 {
     static Map<String,BigInteger> countOfMessagesFromIndividualClientIDs
             = new HashMap<String,BigInteger>();
+    static BigInteger TOO_MANY_MESSAGES = new BigInteger("30");
+    static int numberOfThreads = 0;
     
     /**
      * Constructor for objects of class Server
@@ -23,30 +25,44 @@ public class Server
             throws IOException
     {
         ServerSocket serverSocket;
-        Socket ioSocket;
-        PrintWriter out;
-        BufferedReader in;
-        String message;        
-        
+       
         serverSocket = new ServerSocket(tcpPortNumber);
         
         for (;;)
         {
-            ioSocket = serverSocket.accept();
-                    
-            System.out.println("Connection accepted.");
-            out = new PrintWriter(ioSocket.getOutputStream(), true);
-            in = new BufferedReader(new InputStreamReader(
-                    ioSocket.getInputStream()));
-            message = in.readLine();
+            final Socket ioSocket = serverSocket.accept();
             
-            System.out.println("Received message: " + message);
-            String clientId = (new Scanner(message)).next();
-            receivedMessageFrom(clientId);
-            out.println("Nice to hear from you, " + clientId + "!");
-            out.println("I have heard from you this many times: "
-                    + numberOfMessagesFromClient(clientId));
-            ioSocket.close();
+            Thread thread = new Thread(){
+                int threadId = ++numberOfThreads;
+                
+                public void run()
+                {
+                    try {
+                        PrintWriter out;
+                        BufferedReader in;
+                        String message; 
+                        System.out.println("Connection accepted.");
+                        out = new PrintWriter(ioSocket.getOutputStream(), true);
+                        in = new BufferedReader(new InputStreamReader(
+                                ioSocket.getInputStream()));
+                        message = in.readLine();
+                        
+                        System.out.println("Received message: " + message);
+                        String clientId = (new Scanner(message)).next();
+                        receivedMessageFrom(clientId);
+                        out.println("Nice to hear from you, " + clientId + "!");
+                        out.println("This is thread #" + threadId);
+                        out.println("I have heard from you this many times: "
+                                + numberOfMessagesFromClient(clientId));
+                        if (numberOfMessagesFromClient(clientId).compareTo(TOO_MANY_MESSAGES) >= 0)
+                                out.println("That's enough, buddy!");
+                        ioSocket.close();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            };
+            thread.start();
         }
         
         //maybeTellClientNotToSendAnyMoreMessages(out);
