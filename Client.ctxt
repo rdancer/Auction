@@ -1,0 +1,10 @@
+#BlueJ class context
+comment0.params=host\ tcpPortNumber
+comment0.target=Client(java.lang.String,\ int)
+comment1.params=in
+comment1.target=java.lang.String\ readWholeMessage(java.io.BufferedReader)
+comment2.params=hostNameOrIPAddress\ tcpPortNumber
+comment2.target=void\ connectToTCPPort(java.lang.String,\ int)
+comment3.params=args
+comment3.target=void\ main(java.lang.String[])
+numComments=4
