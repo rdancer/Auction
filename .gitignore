@@ -1,0 +1,15 @@
+# Vim swap files
+.*.sw?
+
+# the assignment is Copyright Durham University
+assignment/
+
+# other things that we either don't own Copyright for, or should be better
+# included by reference
+contrib/
+
+*.class
+
+# BlueJ files -- keep them: why not?
+#*.ctxt
+#*.bluej
