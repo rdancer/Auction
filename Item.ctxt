@@ -1,0 +1,25 @@
+#BlueJ class context
+comment0.params=
+comment0.target=java.lang.String\ getId()
+comment1.params=
+comment1.target=java.lang.String\ getName()
+comment10.params=args
+comment10.target=void\ main(java.lang.String[])
+comment2.params=name
+comment2.target=void\ setName(java.lang.String)
+comment3.params=
+comment3.target=java.math.BigDecimal\ getPrice()
+comment4.params=
+comment4.target=java.util.Date\ getAuctionEndTime()
+comment5.params=
+comment5.target=Item\ itemFromConsole()
+comment5.text=\n\ Generate\ new\ Item,\ getting\ all\ the\ properties\ from\ reading\ the\ console\n\ \n\ @return\ new\ Item\n
+comment6.params=
+comment6.target=Item()
+comment7.params=
+comment7.target=java.lang.String\ uniqueItemId()
+comment8.params=amount
+comment8.target=boolean\ placeBid(java.math.BigDecimal)
+comment9.params=
+comment9.target=java.lang.String\ toString()
+numComments=11
