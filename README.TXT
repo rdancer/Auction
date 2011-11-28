@@ -1,4 +1,4 @@
-README -- Basic information about this project
+README.TXT -- Basic information about this project
 
 Solution of the summative assignment in the Networks submodule of the Computer
 Systems II module, given in Michælmas 2011.  This all at the Durham University,
