@@ -16,6 +16,9 @@ public class Item
 {
     private String id;
     public String getId() { return id; }
+    private String secret;
+    public String getSecret() { return secret; }
+    public void setSecret(String secret) { this.secret = secret; }
     private String name;
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -25,6 +28,10 @@ public class Item
     private RemoteClient winningBidder;
     private Date auctionEndTime;
     public Date getAuctionEndTime() { return auctionEndTime; }
+    private boolean finished = false;
+    public boolean finished() { return finished; }
+    public void setFinished(boolean finished) { this.finished = finished; };
+    
 
     private static AtomicLong uniqueIdCounter = new AtomicLong();
 
@@ -122,7 +129,35 @@ public class Item
     {
         id = uniqueItemId();
     }
+    
+    public Item(String id)
+    {
+        this.id = id;
+    }
 
+    public Item(Map<String,String> itemDescription)
+            throws Exception
+    {
+        if (itemDescription.isEmpty())
+                throw new Exception("Empty item description");
+        if (itemDescription.containsKey("ID"))
+                id = itemDescription.get("ID");
+        if (itemDescription.containsKey("NAME"))
+                name = itemDescription.get("NAME");
+        if (itemDescription.containsKey("PRICE"))
+                price = new BigDecimal(itemDescription.get("PRICE"));
+        if (itemDescription.containsKey("END"))
+                auctionEndTime = new Date(itemDescription.get("END"));
+        if (itemDescription.containsKey("SELLER"))
+                seller = new RemoteClient(itemDescription.get("SELLER"));
+        if (itemDescription.containsKey("BIDDER"))
+                winningBidder = new RemoteClient(itemDescription.get("BIDDER"));
+        if (itemDescription.containsKey("FINISHED"))
+                finished = true;
+                
+        // Tacitly ignore unknown label-value pairs
+    }
+    
     private static String uniqueItemId()
     {
         return "" + uniqueIdCounter.getAndIncrement();
@@ -137,9 +172,9 @@ public class Item
     {
         String s = "";
         
-        s += "ID:        " + getId() + "\n";
-        s += "name:      " + getName() + "\n";
-        s += "price:     GBP " + getPrice() + "\n";
+        s += "ID: " + getId() + "\n";
+        s += "name: " + getName() + "\n";
+        s += "price: " + (getPrice() == null ? "" : "GBP ") + getPrice() + "\n";
         s += "auction ends: " + getAuctionEndTime() + "\n";
         
         // XXX
@@ -148,6 +183,7 @@ public class Item
         
         return s;
     }
+    
     
     public static void main(String[] args)
     {        
