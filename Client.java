@@ -13,43 +13,53 @@ import java.math.BigDecimal;
 
 
 public class Client
+        extends ClientServer
 {
-    static String clientId = "CLIENT_ID_007";
-    //String clientSecret;
-    PrintWriter socketToServer;
-    BufferedReader socketFromServer;
+    private static String clientId;
+    //private String clientSecret;
     
     public Client(String host, int tcpPortNumber)
-            throws IOException
+            throws IOException, Exception
     {
         Socket ioSocket;
-        PrintWriter out;
-        BufferedReader in;
+
 
         ioSocket = new Socket(host, tcpPortNumber);
         System.out.println("Connection established.");
 
-        socketToServer = out = new PrintWriter(ioSocket.getOutputStream(), true);
-        socketFromServer = in = new BufferedReader(new InputStreamReader(
+        socketOut = new PrintWriter(ioSocket.getOutputStream(), true);
+        socketIn = new BufferedReader(new InputStreamReader(
                 ioSocket.getInputStream()));
     
-    
-        out.println("HELLO " + Auction.PROTOCOL_NAME_AND_VERSION + "\r");
-        out.println("ID " + clientId + "\r");
+                
+        String request = "";
+        request += "HELLO " + Protocol.PROTOCOL_NAME_AND_VERSION + "\r\n";
+        request += "ID " + clientId + "\r\n";
         // XXX out.println("PASS " + clientPassPhrase + "\r\n");
-        out.println("THANKS\r");
+        request += "THANKS\r\n";
         
-        String message = readWholeMessage();
+        Map<String,String> response = sendToServer(request);
     
-        if (message.replaceAll("\n", "").matches(".*ERROR.*"))
+        if (response.containsKey("ERROR"))
         {
-            System.err.println("Error connecting to server: \"" + message + "\"");
+            throw new Exception("Error connecting to server: \"" + response.get("ERROR") + "\"");
         }
         else
         {
             System.out.println("Logged in!");
         }
     }
+    
+    protected String readWholeMessage()
+    {
+        String message = readWholeMessage(socketIn);
+        Scanner messageScanner = new Scanner(message);
+
+        while (messageScanner.hasNextLine())
+                System.err.println("server> " + messageScanner.nextLine());        
+        
+        return message;
+    }    
     
     private void commandLoop()
     {
@@ -152,9 +162,9 @@ public class Client
                         }
                         catch (Exception e)
                         {
-                            throw new Error(e);
-                            //System.err.println("Error: " + e.getMessage());
-                            //continue;
+                            //throw new Error(e);
+                            System.err.println("Error: " + e.getMessage());
+                            continue;
                         }
                         
                         System.out.print(item);
@@ -207,36 +217,6 @@ public class Client
 
     }
     
-    private String readWholeMessage()
-    {
-        String message = readWholeMessage(socketFromServer);
-        Scanner messageScanner = new Scanner(message);
-
-        while (messageScanner.hasNextLine())
-                System.err.println("server> " + messageScanner.nextLine());        
-        
-        return message;
-    }
-
-    
-    private String readWholeMessage(BufferedReader in)    
-    {
-        String message = "";
-        String line;
-        
-        try {
-            while ((line = in.readLine()) != null)
-            {
-                message += line.replaceAll("[\r\n]*$", "") + "\n";
-                if (line.matches("^THANKS\\b"))
-                        break;
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-                
-        return message;
-    }
     
    
     public static void main(String[] args)
@@ -263,20 +243,12 @@ public class Client
         {
             client = new Client(hostNameOrIPAddress, tcpPortNumber);
         }
-        catch (IOException e)
+        catch (Exception e)
         {
-            System.err.println("Connection failed: " + e.getMessage());
-            return;
+            throw new Error(e);
         }
         
         client.commandLoop();
-    }
-
-    private void mustNotContainNewlines(String s)
-            throws Exception
-    {
-        if (s.matches("[\r\n]"))
-                throw new Exception("Internal error: string contains invalid characters");
     }
     
     private void sellItem(Item item)
@@ -313,36 +285,9 @@ public class Client
             throws Exception
     {
         
-        socketToServer.println(request.trim() + "\r");
+        socketOut.println(request.trim() + "\r");
         String response = readWholeMessage();
         return parseResponse(response);
-    }
-    
-    private Map<String,String> parseResponse(String response)
-    {
-        Scanner sc = new Scanner(response);
-        Map<String,String> map = new HashMap<String,String>();
-        
-        while (sc.hasNextLine())
-        {
-            String line = sc.nextLine();
-            Scanner lineScanner = new Scanner(line);
-            String label = "", value = "";
-            
-         
-            if (lineScanner.hasNext())
-            {
-                label = lineScanner.next().trim();
-                if (lineScanner.hasNext())
-                {
-                    value = lineScanner.nextLine().trim();
-                }
-                
-                map.put(label, value);
-            }
-        }
-        
-        return map;
     }
     
     private Map<String,Item> requestCancelItem(Item item)
@@ -366,8 +311,15 @@ public class Client
         {
             System.out.println("Confirmation requested");
             Map<String,Item> map = new HashMap<String,Item>();
+            Item returnedItem;
 
-            map.put(response.get("TOKEN"), new Item(response));
+            try {
+                returnedItem = new Item(response);
+            } catch (IllegalArgumentException e) {
+                throw new Exception("Malformed server response"); // most probably malformed auction end time
+            }
+            
+            map.put(response.get("TOKEN"), returnedItem);
             
             return map;
         }
@@ -428,7 +380,7 @@ public class Client
     public static void test()
             throws Exception
     {
-        main(new String[]{ "localhost", "31337", "" + Math.random() });
+        main(new String[]{ "localhost", "" + Protocol.DEFAULT_PORT_NUMBER, "" + Math.random() });
     }
     
     private List<Item> itemsForSale()
@@ -437,7 +389,7 @@ public class Client
         
         String request = "BROWSE\r";
         
-        socketToServer.println(request);
+        socketOut.println(request);
         String response = readWholeMessage();
         
         Scanner scanner = new Scanner(response);
@@ -448,7 +400,7 @@ public class Client
             if (line.matches("^ITEM\\b"))
             {
                 String itemDescription = "";
-                while(scanner.hasNextLine() && (line = scanner.nextLine()).matches("^ENDITEM\\>"))
+                while(scanner.hasNextLine() && (line = scanner.nextLine()).matches("^ENDITEM\\b"))
                         itemDescription += line;
                                     
                 Map<String,String> labelValuePairs = parseResponse(itemDescription);

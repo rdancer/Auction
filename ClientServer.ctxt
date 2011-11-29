@@ -1,0 +1,8 @@
+#BlueJ class context
+comment0.params=in
+comment0.target=java.lang.String\ readWholeMessage(java.io.BufferedReader)
+comment1.params=s
+comment1.target=void\ mustNotContainNewlines(java.lang.String)
+comment2.params=response
+comment2.target=java.util.Map\ parseResponse(java.lang.String)
+numComments=3

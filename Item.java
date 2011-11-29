@@ -16,6 +16,7 @@ public class Item
 {
     private String id;
     public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     private String secret;
     public String getSecret() { return secret; }
     public void setSecret(String secret) { this.secret = secret; }
@@ -24,8 +25,13 @@ public class Item
     public void setName(String name) { this.name = name; }
     private BigDecimal price;
     public BigDecimal getPrice() { return price; }
-    private RemoteClient seller;
-    private RemoteClient winningBidder;
+    public void setPrice(BigDecimal price) { this.price = price; }
+    private String sellerId;
+    public String getSellerId() { return sellerId; }
+    public void setSellerId(String sellerId) { this.sellerId = sellerId; }
+    private String winningBidderId;
+    public String getWinningBidderId() { return winningBidderId; }
+    public void setWinningBidderId(String winningBidderId) { this.winningBidderId = winningBidderId; }
     private Date auctionEndTime;
     public Date getAuctionEndTime() { return auctionEndTime; }
     private boolean finished = false;
@@ -149,13 +155,35 @@ public class Item
         if (itemDescription.containsKey("END"))
                 auctionEndTime = new Date(itemDescription.get("END"));
         if (itemDescription.containsKey("SELLER"))
-                seller = new RemoteClient(itemDescription.get("SELLER"));
+                sellerId = itemDescription.get("SELLER");
         if (itemDescription.containsKey("BIDDER"))
-                winningBidder = new RemoteClient(itemDescription.get("BIDDER"));
+                winningBidderId = itemDescription.get("BIDDER");
         if (itemDescription.containsKey("FINISHED"))
                 finished = true;
                 
         // Tacitly ignore unknown label-value pairs
+    }
+    
+    public String toLabelValuePairsString()
+    {
+        String s = "";
+        
+        if (id != null)
+                s += "ID  " + id;
+        if (name != null)
+                s += "NAME " + name;
+        if (price != null)
+                s += "PRICE " + price;
+        if (auctionEndTime != null)
+                s += "END " + auctionEndTime;
+        if (sellerId != null)
+                s += "SELLER " + sellerId;
+        if (winningBidderId != null)
+                s += "BIDDER " + winningBidderId;
+        if (finished)
+                s += "FINISHED";
+                
+        return s;
     }
     
     private static String uniqueItemId()
@@ -178,8 +206,8 @@ public class Item
         s += "auction ends: " + getAuctionEndTime() + "\n";
         
         // XXX
-        //s += "seller:    " + seller + "\n";
-        //s += "winning bidder: " + winningBidder + "\n";
+        //s += "seller:    " + sellerId + "\n";
+        //s += "winning bidder: " + winningBidderId + "\n";
         
         return s;
     }
