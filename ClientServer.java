@@ -16,23 +16,36 @@ public abstract class ClientServer
 {
     protected PrintWriter socketOut;
     protected BufferedReader socketIn;
-
-
-
+    protected static boolean debug;
     
+  
     protected String readWholeMessage(BufferedReader in)    
     {
         String message = "";
         String line;
         
         try {
+
             while ((line = in.readLine()) != null)
             {
                 message += line.replaceAll("[\r\n]*$", "") + "\n";
                 if (line.matches("^THANKS\\b"))
                         break;
             }
-        } catch (IOException e) {
+            
+//             Scanner sc = new Scanner(in);
+//             while(sc.hasNextLine())
+//             {
+//                 line = sc.nextLine().replaceAll("[\r\n]*$", "") + "\n";
+//                 message += line;
+//                 if (line./* XXX DNW matches("^THANKS\\b") */trim().equals("THANKS"))
+//                 {
+//                     //System.out.println("Found end of message");
+//                     break;
+//                 }
+//             }
+            
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
                 
@@ -72,5 +85,12 @@ public abstract class ClientServer
         
         return map;
     }
-    
+   
+    /**
+     * Print on standard output if debugging is enabled
+     */
+    protected static void log(String s)
+    {
+        if (debug) System.out.println(s.trim());
+    }
 }

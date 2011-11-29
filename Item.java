@@ -58,7 +58,7 @@ public class Item
             System.out.print("Item name: ");
             //s = "   Some silly item name \n";
             s = consoleScanner.nextLine();
-            item.name = s.replaceAll("^[[:space:]]*", "").replaceAll("[[:space:]]*$", "");
+            item.name = s.trim();
             
             for (;;)
             {
@@ -89,34 +89,40 @@ public class Item
             }
             
             
-            for(;;)
-            {
-                System.out.print("Auction end time (10 minutes if blank): ");
+            do {
+                System.out.print("Auction duration in seconds (defaults to 10 minutes if blank): ");
                 s = consoleScanner.nextLine();
-                s = s.replaceAll("^[[:space:]]*", "").replaceAll("[[:space:]]*$", "");
+                s = s.trim();
                 if (s.equals(""))
                 {
                     long millisecondsPerMinute = 60 * 1000;
                     Date tenMinutesFromNow = new Date(System.currentTimeMillis()
                             + 10 * millisecondsPerMinute);
                     item.auctionEndTime = tenMinutesFromNow;
-
-                    break;
                 }
                 else
                 {
                     try
                     {
-                        // XXX DNW
-                        item.auctionEndTime = (new SimpleDateFormat()).parse(s);
+                        Integer auctionDurationSeconds = Integer.parseInt(s);
+                        if (!auctionDurationSeconds.toString().equals(s))
+                                throw new Exception("Not an integer");
+                        else if (auctionDurationSeconds <= 0)
+                                throw new Exception("Duration must be positive");
+                        else
+                        {
+                            long millisecondsPerSecond = 1000;
+                            item.auctionEndTime = new Date(System.currentTimeMillis()
+                                    + auctionDurationSeconds * millisecondsPerSecond);
+                        }
                     }
-                    catch (ParseException e)
+                    catch (Exception e)
                     {
-                        System.err.println("I have trouble parsing this date");
+                        System.err.println("I have trouble parsing your input: " + e.getMessage());
                         continue;
                     }
                 }
-            }
+            } while (false);
         }
         catch (NoSuchElementException e)
         {
@@ -169,19 +175,19 @@ public class Item
         String s = "";
         
         if (id != null)
-                s += "ID  " + id;
+                s += "ID " + id + "\n";
         if (name != null)
-                s += "NAME " + name;
+                s += "NAME " + name + "\n";
         if (price != null)
-                s += "PRICE " + price;
+                s += "PRICE " + price + "\n";
         if (auctionEndTime != null)
-                s += "END " + auctionEndTime;
+                s += "END " + auctionEndTime + "\n";
         if (sellerId != null)
-                s += "SELLER " + sellerId;
+                s += "SELLER " + sellerId + "\n";
         if (winningBidderId != null)
-                s += "BIDDER " + winningBidderId;
+                s += "BIDDER " + winningBidderId + "\n";
         if (finished)
-                s += "FINISHED";
+                s += "FINISHED" + "\n";
                 
         return s;
     }

@@ -14,11 +14,25 @@ import java.math.BigInteger;
 public class Server
         extends ClientServer
 {
+    protected static final boolean DEFAULT_DEBUG_VALUE = true;
+    
     static Map<String,Item> itemsForSale
             = new HashMap<String,Item>();
     static int numberOfThreads = 0;
-    String clientId; // Note: this variable is set per-thread
+    static Map<String,Runnable> actionsAvaitingConfirmation = new HashMap<String,Runnable>();
     
+     private static ThreadLocal clientId = new ThreadLocal();
+ 
+     private static String getClientId() {
+         return (String) clientId.get();
+     }
+     
+     private static void setClientId(String clientId)
+     {
+         Server.clientId.set(clientId);
+     }
+     
+     
     /**
      * Constructor for objects of class Server
      */
@@ -48,6 +62,7 @@ public class Server
                         if (!firstLine.trim().matches("HELLO " + Protocol.PROTOCOL_NAME_AND_VERSION))
                         {
                             respond("ERROR Protocol mismatch");
+                            ioSocket.close();
                             return;  // XXX from a thread?
                         }
                         
@@ -67,7 +82,7 @@ public class Server
                         }
                         else
                         {
-                            clientId = labelValuePairs.get("ID");
+                            setClientId(labelValuePairs.get("ID"));
                             // XXX authenticate
                         }
                         
@@ -92,11 +107,12 @@ public class Server
         System.out.println("Waiting for commands from client...");
         String line;
         
-        Scanner in = new Scanner(System.in);
+        Scanner in = new Scanner(socketIn);
  
-        for (;;)
+        while (in.hasNextLine())
         {
             line = in.nextLine();
+            log(/* XXX sanitize */ getClientId() + " <<< " + line);
             Scanner lineScanner = new Scanner(line.trim());
             
             if (lineScanner.hasNext())
@@ -109,12 +125,15 @@ public class Server
                 
                 Map<String,String> labelValuePairs;
                 if (command.equals("THANKS"))
+                {
                     continue;
+                }
                 else
                 {
                     try {
-                        labelValuePairs = readFromClient();
+                        labelValuePairs = readFromClient(in); // readFromClient() DNW, try to pass the Scanner
                     } catch (Exception e) {
+                        log("Malformed input: " + e.getMessage());
                         respond("ERROR Malformed input");
                         continue;
                     }
@@ -129,26 +148,41 @@ public class Server
                     System.out.println("Sending all auctions...");
                     String response = "";
                     
-                    for (Item item : itemsForSale.values())  // XXX non-thread-safe??
+                    synchronized(itemsForSale)
                     {
-                        response += "ITEM\r\n";
-                        response += item.toLabelValuePairsString().replaceAll("$", "\r");
-                        response += "ENDITEM\r\n";
+                        for (Item item : itemsForSale.values())
+                        {
+                            response += "ITEM\r\n";
+                            response += item.toLabelValuePairsString().replaceAll("$", "\r").trim() + "\r\n";
+                            response += "ENDITEM\r\n";
+                        }
                     }
-                    respond(response);
+                    respond(response.isEmpty() ? "OK No items" : response);
                 }
                 else if (command.equals("BROWSE"))
                 {
                     System.out.println("Sending specific auctions...");                    
                     String response = "";
                     
-                    for (String itemId : arguments)  // XXX non-thread-safe??
+                    synchronized(itemsForSale)
                     {
-                        Item item = itemsForSale.get(itemId);
-                        
-                        response += "ITEM\r\n";                        
-                        response += item.toLabelValuePairsString().replaceAll("$", "\r");
-                        response += "ITEM\r\n";                        
+                        for (String itemId : arguments)
+                        {
+                            // Note: We quietly ignore items that are not present.  There is a good reason:
+                            // An item may have been removed after the client have made sure it ID was valid.
+                            // The client has no means of locking our database while it is waiting for the
+                            // network round-trip to complete, and so it would not be right to punish them:
+                            // we cannot discern whether it is their fault, and even a well-behaved client
+                            // will request a stale itemId ever so often.
+                            if (itemsForSale.containsKey(itemId))
+                            {
+                                Item item = itemsForSale.get(itemId);
+                                
+                                response += "ITEM\r\n";                        
+                                response += item.toLabelValuePairsString().replaceAll("$", "\r");
+                                response += "ITEM\r\n";                        
+                            }
+                        }
                     }
                     respond(response);
                 }
@@ -164,8 +198,10 @@ public class Server
                     String itemId = java.util.UUID.randomUUID().toString();
                     
                     item.setId(itemId);
-                    itemsForSale.put(itemId, item);
-                    
+                    synchronized(itemsForSale)
+                    {
+                        itemsForSale.put(itemId, item);
+                    }
                     respond("ID " + itemId);
                 }
                 else if (command.equals("BID"))
@@ -182,6 +218,7 @@ public class Server
                     catch (Exception e)
                     {
                         respond("ERROR " + e.getMessage());
+                        continue;
                     }
                     
                     respond("OK You're the highest bidder");
@@ -193,44 +230,69 @@ public class Server
                         respond("ERROR Malformed request: ID missing");
                         continue;
                     }
-                    String itemId = labelValuePairs.get("ID");
+                    final String itemId = labelValuePairs.get("ID");
                     Item item;
-                    try {
+                    synchronized(itemsForSale)
+                    {
+                        if (!itemsForSale.containsKey(itemId))
+                        {
+                            respond("ERROR No such item");
+                            continue;
+                        }
                         item = itemsForSale.get(itemId);
-                    } catch (Exception e) {
-                        respond("ERROR No such item");
-                        continue;
                     }
-
+                        
                     String token = java.util.UUID.randomUUID().toString();
                     
+                    actionsAvaitingConfirmation.put(token, new Thread()
+                            {
+                                public void run()
+                                        /* throws Exception */ // no really, it does: via Thread.stop(Throwable)
+                                {
+                                    try {
+                                        cancel(itemId);
+                                    } catch (Exception e) {
+                                        this.stop(e);
+                                    }
+                                }
+                            });
+                    
+                    assert(item != null);
                     respond(item.toLabelValuePairsString() + "\r\nTOKEN " + token);
-                    
-                    try {
-                        labelValuePairs = readFromClient();
-                    } catch (Exception e) {
-                        respond("ERROR Malformed input");
-                        continue;
+                }
+                else if (command.equals("CONFIRM"))
+                {
+                    if (arguments.size() == 0)
+                            respond("ERROR Malformed request: token missing");
+                    else if (arguments.size() > 1)
+                            respond("ERROR Malformed request: contains more than one token");
+
+                    Runnable action;
+                    String token = arguments.get(0);
+                    synchronized(actionsAvaitingConfirmation) {
+                        if (!actionsAvaitingConfirmation.containsKey(token))
+                                respond("ERROR No such confirmation token");
+                        action = actionsAvaitingConfirmation.remove(token);
                     }
-                    
-                    if (!labelValuePairs.containsKey("CONFIRM"))
-                            continue;
-                            
-                    if (!labelValuePairs.containsKey("TOKEN"))
-                            respond("ERROR Malformed request: TOKEN missing");
-                    else if (!labelValuePairs.get("TOKEN").equals(token))
-                            respond("ERROR Tokens don't match");
-                    
                     try
                     {
-                        cancel(itemId);
+                        action.run();
                     }
                     catch (Exception e)
                     {
                         respond("ERROR " + e.getMessage());
+                        continue;
                     }
+                    respond("OK Performed successfully");
+                }
+                else if (command.equals("PING"))
+                {
+                    String response = "PONG";
                     
-                    respond("OK Item removed");
+                    for (String argument : arguments)
+                            response += " " + argument;
+                            
+                    respond(response);
                 }
                 else
                 {
@@ -246,16 +308,14 @@ public class Server
             throws Exception
     {
         synchronized(itemsForSale) {
-            Item item;
+            if (!itemsForSale.containsKey(itemId))
+                    throw new Exception("Item not on sale: " + itemId);
             
-            try {
-                item = itemsForSale.get(itemId);
-            } catch (Exception e) {
-                throw new Exception("Item not on sale");
-            }
+            Item item = itemsForSale.get(itemId);
             
             if (item.getPrice().compareTo(amount) >= 0)
-                    throw new Exception("Bid lower than the current asking price");
+                    throw new Exception("Bid " + amount 
+                            + " lower than or equal to the current price " + item.getPrice());
             else
             {
                 item.setPrice(amount);
@@ -285,46 +345,87 @@ public class Server
 
     private void respond(String message)
     {
-        socketOut.println(message.trim() + "\r\nTHANKS\r" );
-                // Can't use print(), as it doesn't flush buffer, or something
+        message = message.trim() + "\r\nTHANKS\r";
+        
+        log(message.replaceAll("^|(\n)(.)", "$1" + /* XXX sanitize */ getClientId() + " >>> $2"));                
+        
+        socketOut.println(message);  // Can't use print(): it doesn't flush buffer, or something
     }
 
     protected String readWholeMessage()
     {
         String message = readWholeMessage(socketIn);
-        Scanner messageScanner = new Scanner(message);
-
-        while (messageScanner.hasNextLine())
-                System.err.println("client> " + messageScanner.nextLine());        
         
+        log(message.replaceAll("^|(\n)(.)", "$1" + /* XXX sanitize */ getClientId() + " <<< $2"));
+
+        return message;
+    }
+
+    /*
+     * XXX For some reason, opening a new scanner on socketIn is causing problems.
+     * The following versions of the methods from above solve this issue by reusing
+     * the scanner opened in the caller's context.  This is kludgy.
+     */
+    
+    /* ******************* Kludge begin ***************** */    
+    
+    private Map<String,String> readFromClient(Scanner reuseScanner)
+            throws Exception
+    {
+        String request = readWholeMessage(reuseScanner);
+        log(request.replaceAll("^|(\n)(.)", "$1" + /* XXX sanitize */ getClientId() + " <<< $2"));
+        return parseResponse(request);
+    }
+    
+
+
+    private String readWholeMessage(Scanner reuseScanner)    
+    {
+        String message = "";
+        String line;
+        
+        try {
+// 
+//             while ((line = in.readLine()) != null)
+//             {
+//                 message += line.replaceAll("[\r\n]*$", "") + "\n";
+//                 if (line.matches("^THANKS\\b"))
+//                         break;
+//             }
+            
+            Scanner sc = reuseScanner;
+            while(sc.hasNextLine())
+            {
+                line = sc.nextLine().replaceAll("[\r\n]*$", "") + "\n";
+                message += line;
+                if (line./* XXX DNW matches("^THANKS\\b") */trim().equals("THANKS"))
+                {
+                    //System.out.println("Found end of message");
+                    break;
+                }
+            }
+            
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+                
         return message;
     }
     
-/*
-    private void receivedMessageFrom(String clientId)
-    {
-
-        if (!countOfMessagesFromIndividualClientIDs.containsKey(clientId))
-                countOfMessagesFromIndividualClientIDs.put(clientId,
-                        BigInteger.ONE);
-        else
-                countOfMessagesFromIndividualClientIDs.put(clientId,
-                        countOfMessagesFromIndividualClientIDs.get(clientId)
-                        .add(BigInteger.ONE));
-                        
-        System.out.println("after: " + countOfMessagesFromIndividualClientIDs.get(clientId));
-    }
-*/    
+    /* ******************* Kludge end ***************** */
+   
     public static void runServerOnTCPPort(int tcpPortNumber)
             throws IOException
     {
-        System.out.println(tcpPortNumber);
+        log("Listening on port " + tcpPortNumber + "...");
         new Server(tcpPortNumber);
     }
     
     public static void main(String[] args)
             throws IOException
     {
+        debug = DEFAULT_DEBUG_VALUE; // bit of a kludge
+                
         int tcpPortNumber = Protocol.DEFAULT_PORT_NUMBER;
         try {
             int number = new Integer(args[0]);

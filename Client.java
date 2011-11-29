@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 public class Client
         extends ClientServer
 {
+    protected static final boolean DEFAULT_DEBUG_VALUE = false;
+    
     private static String clientId;
     //private String clientSecret;
     
@@ -56,14 +58,14 @@ public class Client
         Scanner messageScanner = new Scanner(message);
 
         while (messageScanner.hasNextLine())
-                System.err.println("server> " + messageScanner.nextLine());        
+                log("<<< " + messageScanner.nextLine());        
         
         return message;
     }    
     
     private void commandLoop()
     {
-        System.out.println("Enter commands");
+        System.out.println("Type \"help\" for the list of available commands");                    
         String line;
         
         System.out.print("> ");  // prompt
@@ -92,7 +94,10 @@ public class Client
                 else if (command.equals("list") && arguments.isEmpty())
                 {
                     System.out.println("Getting list of auctions...");
-                    for (Item item : itemsForSale())
+                    Collection<Item> itemsForSale = itemsForSale();
+                    System.out.println(itemsForSale.size() + " auction"
+                            + (itemsForSale.size() == 1 ? "" : "s"));
+                    for (Item item : itemsForSale)
                             System.out.println(item);
                 }
                 else if (command.equals("list"))
@@ -157,8 +162,8 @@ public class Client
                             token = (String)(tokenAndItemTuple.keySet().toArray())[0];  // this is horrible
                             item = tokenAndItemTuple.get(token);
                             
-                            System.out.println("token: " + token);
-                            System.out.println("item: " + item);
+                            log("Cancellation token received: " + token);
+                            //System.out.println("item: " + item);
                         }
                         catch (Exception e)
                         {
@@ -196,6 +201,15 @@ public class Client
                         }
                     }
                 }
+                else if (command.equals("verbose") && arguments.isEmpty())
+                {
+                    System.out.println("I am being " + (debug ? "verbose" : "quiet"));                    
+                }
+                else if (command.equals("verbose") && arguments.size() == 1
+                        && arguments.get(0).matches("^(on|off)$"))
+                {
+                    debug = arguments.get(0).equals("on");
+                }
                 else if (command.toLowerCase().matches("help|h|\\?|hilfe"))
                 {
                     System.out.println("quit                     Terminate program");
@@ -203,12 +217,26 @@ public class Client
                     System.out.println("sell                     Place an item up for sale");
                     System.out.println("bid <ITEM_ID> <AMOUNT>   Bid GBP AMOUNT on item ITEM_ID");
                     System.out.println("cancel <ITEM_ID>[, ...]  Remove one or more items from sale");
-                    System.out.println("bid <ITEM_ID> <AMOUNT>   Bid GBP AMOUNT for item ITEM_ID");
+                    System.out.println("verbose [on|off]         Show chatter with server and other extra info");
+                }
+                else if (command.equals("ping"))
+                {
+                    String request = "PING";
+                    
+                    for (String argument : arguments)
+                            request += " " + argument;
+                    
+                    try {
+                        sendToServer(request + "\r\nTHANKS\r\n");
+                    } catch (Exception e) {
+                        System.out.println("Error: " + e.getMessage());
+                    }
+                    // Note: enable verbose (verbose on) to see the server reply
                 }
                 else
                 {
                     System.out.println("Unknown command: " + line);
-                    System.out.println("Type \"help\" to get help");                    
+                    System.out.println("Type \"help\" for the list of available commands");                    
                 }
             }
             System.out.print("> ");  // prompt
@@ -222,6 +250,8 @@ public class Client
     public static void main(String[] args)
             throws IOException
     {
+        debug = DEFAULT_DEBUG_VALUE; // bit of a kludge
+        
         String hostNameOrIPAddress;
         int tcpPortNumber;
         
@@ -245,7 +275,9 @@ public class Client
         }
         catch (Exception e)
         {
-            throw new Error(e);
+            System.err.println("Error: " + e.getMessage());
+            if (debug) throw new Error(e);
+            else return;
         }
         
         client.commandLoop();
@@ -284,7 +316,7 @@ public class Client
     public Map<String,String> sendToServer(String request)
             throws Exception
     {
-        
+        log(request.replaceAll("^|(\n)(.)", "$1>>> $2"));
         socketOut.println(request.trim() + "\r");
         String response = readWholeMessage();
         return parseResponse(response);
@@ -333,6 +365,8 @@ public class Client
     private void confirmAction(String token)
             throws Exception
     {
+        log("Confirming action with token " + token + "...");
+        
         String request = "";
         
         mustNotContainNewlines(token);
@@ -369,10 +403,10 @@ public class Client
         
         Map<String,String> response = sendToServer(request);
         
-        if (response.containsKey("ID"))
+        if (response.containsKey("OK"))
                 System.out.println("Bid accepted");
         else if (response.containsKey("ERROR"))
-                throw new Exception("Bid not accepted -- server said: " + response.get("ERROR"));
+                throw new Exception("Bid not accepted: " + response.get("ERROR"));
         else
                 throw new Exception("Bid not accepted");
     }    
@@ -380,15 +414,16 @@ public class Client
     public static void test()
             throws Exception
     {
-        main(new String[]{ "localhost", "" + Protocol.DEFAULT_PORT_NUMBER, "" + Math.random() });
+        main(new String[]{ "localhost", "" + Protocol.DEFAULT_PORT_NUMBER, "" + Math.random() * Integer.MAX_VALUE });
     }
     
     private List<Item> itemsForSale()
     {
         List<Item> itemList = new ArrayList<Item>();
-        
-        String request = "BROWSE\r";
-        
+
+        String request = "BROWSE\r\nTHANKS\r";
+
+        log(request.replaceAll("^|(\n)(.)", "$1>>> $2"));                
         socketOut.println(request);
         String response = readWholeMessage();
         
@@ -400,8 +435,8 @@ public class Client
             if (line.matches("^ITEM\\b"))
             {
                 String itemDescription = "";
-                while(scanner.hasNextLine() && (line = scanner.nextLine()).matches("^ENDITEM\\b"))
-                        itemDescription += line;
+                while(scanner.hasNextLine() && !(line = scanner.nextLine()).matches("^ENDITEM\\b"))
+                        itemDescription += line + "\n";
                                     
                 Map<String,String> labelValuePairs = parseResponse(itemDescription);
                 
