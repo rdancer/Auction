@@ -391,39 +391,60 @@ public class Server
                         respond("ERROR Malformed request: ID missing");
                         continue;
                     }
-                    final String itemId = labelValuePairs.get("ID");
+                    String itemId = labelValuePairs.get("ID");
                     Item item;
                     synchronized(itemsForSale)
                     {
+
+                        
+                        
                         if (!itemsForSale.containsKey(itemId))
                         {
-                            respond("ERROR No such item");
-                            continue;
-                        }
-                        else
-                        {
-                            item = itemsForSale.get(itemId);
-                            if (!item.getSellerId().equals(getClientId()))
+                            // Maybe it really is an item name -- try to match it
+                            // XXX kludge
+                            String maybeItemName = itemId;
+                            boolean itemFound = false;
+                            for (Item tempItem : itemsForSale.values())
                             {
-                                respond("ERROR You are not the seller");
+                                if (tempItem.getName() != null
+                                    && tempItem.getName().trim().toLowerCase().matches(
+                                            maybeItemName.trim().toLowerCase())) // XXX insecure?
+                                {
+                                    itemFound = true;
+                                    itemId = tempItem.getId();
+                                    break;
+                                }
+                            }
+                            
+                            if (!itemFound || !itemsForSale.containsKey(itemId))
+                            {
+                                respond("ERROR No such item");
                                 continue;
                             }
-                            else if (item.finished())
-                            {
-                                respond("ERROR Not removing expired item");
-                            }
+                        }
+
+                        item = itemsForSale.get(itemId);
+                        if (!item.getSellerId().equals(getClientId()))
+                        {
+                            respond("ERROR You are not the seller");
+                            continue;
+                        }
+                        else if (item.finished())
+                        {
+                            respond("ERROR Not removing expired item");
                         }
                     }
                         
                     String token = java.util.UUID.randomUUID().toString();
                     
+                    final String itemIdCopy = new String(itemId);
                     actionsAwaitingConfirmation.put(token, new Thread()
                             {
                                 public void run()
                                         /* throws Exception */ // no really, it does: via Thread.stop(Throwable)
                                 {
                                     try {
-                                        cancel(itemId);
+                                        cancel(itemIdCopy);
                                     } catch (Exception e) {
                                         this.stop(e);
                                     }
@@ -481,8 +502,30 @@ public class Server
             throws Exception
     {
         synchronized(itemsForSale) {
-            if (!itemsForSale.containsKey(itemId))
+            if (itemsForSale.containsKey(itemId))
+            {
+                // OK, the itemId already contains the item id!
+            }
+            else
+            {
+                // Maybe it really is an item name -- try to match it
+                String maybeItemName = itemId;
+                boolean itemFound = false;
+                for (Item item : itemsForSale.values())
+                {
+                    if (item.getName() != null
+                        && item.getName().trim().toLowerCase().matches(
+                                maybeItemName.trim().toLowerCase())) // XXX insecure?
+                    {
+                        itemFound = true;
+                        itemId = item.getId();
+                        break;
+                    }
+                }
+                
+                if (!itemFound)
                     throw new Exception("Item not on sale: " + itemId);
+            }
             
             Item item = itemsForSale.get(itemId);
             

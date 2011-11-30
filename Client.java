@@ -191,15 +191,15 @@ public class Client
                         itemId = arguments.get(0);
                         amount = new BigDecimal(arguments.get(1));
                         if (arguments.size() > 2) throw new Exception("Too many arguments");
-                        // XXX fix this to match the name with an item id
-                        // so user can say: bid <ITEM_NAME> <AMOUNT>
-                        if (!itemId.matches("........-....-....-....-............"))
-                                throw new Exception("This doesn't look like an item id");
+                        
+                        //if (!itemId.matches("........-....-....-....-............"))
+                        //        throw new Exception("This doesn't look like an item id");
                     }
                     catch (Exception e)
                     {
-                        System.err.println("Usage: bid <ITEM_ID> <AMOUNT>");
+                        System.err.println("Usage: bid <ITEM_ID|ITEM_NAME> <AMOUNT>");
                         System.err.println("Example: bid 762bbe09-db0e-4924-b6c0-ebcb02b79911 33.01"); 
+                        System.err.println("Example: bid hat 19");                         
                         continue;
                     }
                     
@@ -285,8 +285,10 @@ public class Client
                     System.out.println("quit                     Terminate program");
                     System.out.println("list [<ITEM_ID>[, ...]]  Show specified items (or all items if none apecified)");
                     System.out.println("sell                     Place an item up for sale");
-                    System.out.println("bid <ITEM_ID> <AMOUNT>   Bid GBP AMOUNT on item ITEM_ID");
-                    System.out.println("cancel <ITEM_ID>[, ...]  Remove one or more items from sale");
+                    System.out.println("bid <ITEM_ID|ITEM_NAME> <AMOUNT>");
+                    System.out.println("                         Bid GBP AMOUNT on specified item");
+                    System.out.println("cancel <ITEM_ID|ITEM_NAME>");
+                    System.out.println("                         Remove item from sale");
                     System.out.println("verbose                  Show protocol chatter and log messages");
                     System.out.println("quiet                    Stop being verbose");                    
                     System.out.println("photo                    Display photo of everyone's favourite lecturer");
