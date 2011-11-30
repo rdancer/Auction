@@ -14,25 +14,170 @@ import java.math.BigInteger;
 public class Server
         extends ClientServer
 {
-    protected static final boolean DEFAULT_DEBUG_VALUE = true;
+    private static final boolean DEFAULT_DEBUG_VALUE = true;
     
-    static Map<String,Item> itemsForSale
+    private static Map<String,Item> itemsForSale
             = new HashMap<String,Item>();
-    static int numberOfThreads = 0;
-    static Map<String,Runnable> actionsAvaitingConfirmation = new HashMap<String,Runnable>();
+    private static int numberOfThreads = 0;
+    private static Map<String,Runnable> actionsAwaitingConfirmation = new HashMap<String,Runnable>();
+    private static HashMap<String,InetSocketAddress> clientsRegisteredForBroadcastAlerts
+            = new HashMap<String,InetSocketAddress>();
     
-     private static ThreadLocal clientId = new ThreadLocal();
+    
+    private static ThreadLocal clientId = new ThreadLocal();
+    private static String getClientId() { return (String) clientId.get(); }
+    private static void setClientId(String clientId) { Server.clientId.set(clientId); }
+     
+
+    private static Thread expiredItemsChecker = new Thread() {
+        public void run() {
+            
+            for (;;)
+            {
+                List<Item> expiredItems = new ArrayList<Item>();;
+                Date now = new Date();
+                
+                synchronized(itemsForSale)
+                {
+                    if (itemsForSale != null)
+                    {
+                        for (Item item : itemsForSale.values())
+                        {
+                            if (!item.finished() && item.getAuctionEndTime().compareTo(now) < 0)
+                            {
+                                item.setFinished(true);
+                                itemsForSale.put(item.getId(), item);
+                                expiredItems.add(item);  // XXX Not thread-safe?  Should do a deep copy?
+                                                         // Work around: once an item is finished, do not alter it!
+                            }
+                        }
+                    }
+                }
+
+                for (Item item : expiredItems)
+                {
+                    String seller = item.getSellerId();
+                    String winningBidder = item.getWinningBidderId();
+                    String itemId = item.getId();
+                    String itemName = item.getName();
+                    
+                    if (winningBidder != null)
+                    {
+                        sendToSingleClient(winningBidder, "You have won " + itemName);
+                        sendToSingleClient(seller, "You have sold " + itemName + " to bidder "
+                                + winningBidder);
+                    }
+                    else
+                    {
+                        sendToSingleClient(seller, "Item not sold: " + itemName);
+                    }
+                }
+                
+                expiredItems.clear();
+                long millisecondsPerSecond = 1000;
+                try {
+                    sleep(1 * millisecondsPerSecond); // Somewhat arbitrariy duration
+                } catch (InterruptedException e) {
+                    // Ignore
+                }
+            }
+        }
+    };
+    
+    static {
+        expiredItemsChecker.start();
+    }
+    
+    private static void sendToSingleClient(String clientId, String s)
+    {
+        String message = "";
+        
+        message += Protocol.PROTOCOL_NAME_AND_VERSION + "\r\n";
+        message += "ALERT " + s + "\r\n";
+        message += "THANKS\r\n";
+                        
+        byte[] buffer = new byte[512],
+                messageBytes = message.getBytes();
+
+        for (int i = 0; i < buffer.length; i++)
+                buffer[i] = '\0';
+
+        int length = Math.min(messageBytes.length, buffer.length
+                - /* leave one byte for the terminating NUL */ 1);
+        for (int i = 0; i < length; i++)
+                buffer[i] = messageBytes[i];
+
+        log("Sending message to: " + clientId);        
+        DatagramPacket packet;
+        
+        InetSocketAddress portAndAddress = clientsRegisteredForBroadcastAlerts.get(clientId);
+        if (portAndAddress == null)
+        {
+            log("Cannot send message: no socket address stored for client " + clientId);
+            return;
+        }
+    
+        InetAddress address = portAndAddress.getAddress();
+        int port = portAndAddress.getPort();
+        packet = new DatagramPacket(buffer, buffer.length, address, port);
+        
+        DatagramSocket socket = null;
+        try {
+            socket = new DatagramSocket();
+            socket.send(packet);
+        } catch (Exception e) {
+            log("Error: " + e.getMessage());
+        } finally {
+            if (socket != null)
+                    socket.close();
+        }
+    }
+    
+    private static void broadcastToAllRegisteredClients(String s)
+    {
+        String message = "";
+        
+        message += Protocol.PROTOCOL_NAME_AND_VERSION + "\r\n";
+        message += "ALERT " + s + "\r\n";
+        message += "THANKS\r\n";
  
-     private static String getClientId() {
-         return (String) clientId.get();
-     }
-     
-     private static void setClientId(String clientId)
-     {
-         Server.clientId.set(clientId);
-     }
-     
-     
+        byte[] buffer = new byte[512],
+                messageBytes = message.getBytes();
+
+        for (int i = 0; i < buffer.length; i++)
+                buffer[i] = '\0';
+
+        int length = Math.min(messageBytes.length, buffer.length
+                - /* leave one byte for the terminating NUL */ 1);
+        for (int i = 0; i < length; i++)
+                buffer[i] = messageBytes[i];
+
+        log("Sending message to: " + clientsRegisteredForBroadcastAlerts);        
+        List<DatagramPacket> packetQueue = new ArrayList<DatagramPacket>();
+        synchronized(clientsRegisteredForBroadcastAlerts)
+        {
+            for (InetSocketAddress portAndAddress : clientsRegisteredForBroadcastAlerts.values())
+            {
+                InetAddress address = portAndAddress.getAddress();
+                int port = portAndAddress.getPort();
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, port);
+                packetQueue.add(packet);
+            }
+        }
+        
+        DatagramSocket socket = null;
+        try {
+            socket = new DatagramSocket();
+            for (DatagramPacket packet : packetQueue)
+                    socket.send(packet);
+        } catch (Exception e) {
+            log("Error: " + e.getMessage());
+        } finally {
+            if (socket != null)
+                    socket.close();
+        }
+    }
+         
     /**
      * Constructor for objects of class Server
      */
@@ -86,6 +231,21 @@ public class Server
                             // XXX authenticate
                         }
                         
+                        InetAddress address = ioSocket.getInetAddress();
+                        int port = Protocol.DEFAULT_PORT_NUMBER;
+                        if (labelValuePairs.containsKey("UDP"))
+                                port = Integer.parseInt(labelValuePairs.get("UDP"));
+                        
+                        if (port /* is valid */ >= 1 && port <= 65535)
+                        {
+                            log("Registering client for broadcasts...");
+                            synchronized(clientsRegisteredForBroadcastAlerts)
+                            {   
+                                clientsRegisteredForBroadcastAlerts
+                                        .put(getClientId(), new InetSocketAddress(address, port));
+                            }
+                            log("... done.");
+                        }
                         respond("OK " + Protocol.PROTOCOL_NAME_AND_VERSION);
                         
                         commandLoop();
@@ -198,6 +358,7 @@ public class Server
                     String itemId = java.util.UUID.randomUUID().toString();
                     
                     item.setId(itemId);
+                    item.setSellerId(getClientId());
                     synchronized(itemsForSale)
                     {
                         itemsForSale.put(itemId, item);
@@ -213,7 +374,7 @@ public class Server
                     {
                         itemId = labelValuePairs.get("ID");
                         amount = new java.math.BigDecimal(labelValuePairs.get("PRICE"));
-                        bid(itemId, amount);
+                        bid(itemId, amount, getClientId());
                     }
                     catch (Exception e)
                     {
@@ -239,12 +400,24 @@ public class Server
                             respond("ERROR No such item");
                             continue;
                         }
-                        item = itemsForSale.get(itemId);
+                        else
+                        {
+                            item = itemsForSale.get(itemId);
+                            if (!item.getSellerId().equals(getClientId()))
+                            {
+                                respond("ERROR You are not the seller");
+                                continue;
+                            }
+                            else if (item.finished())
+                            {
+                                respond("ERROR Not removing expired item");
+                            }
+                        }
                     }
                         
                     String token = java.util.UUID.randomUUID().toString();
                     
-                    actionsAvaitingConfirmation.put(token, new Thread()
+                    actionsAwaitingConfirmation.put(token, new Thread()
                             {
                                 public void run()
                                         /* throws Exception */ // no really, it does: via Thread.stop(Throwable)
@@ -269,10 +442,10 @@ public class Server
 
                     Runnable action;
                     String token = arguments.get(0);
-                    synchronized(actionsAvaitingConfirmation) {
-                        if (!actionsAvaitingConfirmation.containsKey(token))
+                    synchronized(actionsAwaitingConfirmation) {
+                        if (!actionsAwaitingConfirmation.containsKey(token))
                                 respond("ERROR No such confirmation token");
-                        action = actionsAvaitingConfirmation.remove(token);
+                        action = actionsAwaitingConfirmation.remove(token);
                     }
                     try
                     {
@@ -304,7 +477,7 @@ public class Server
 
     }
 
-    private void bid(String itemId, java.math.BigDecimal amount)
+    private void bid(String itemId, java.math.BigDecimal amount, String clientId)
             throws Exception
     {
         synchronized(itemsForSale) {
@@ -316,14 +489,17 @@ public class Server
             if (item.getPrice().compareTo(amount) >= 0)
                     throw new Exception("Bid " + amount 
                             + " lower than or equal to the current price " + item.getPrice());
+            else if(item.finished())
+                    throw new Exception("Expired item");
             else
             {
                 item.setPrice(amount);
+                item.setWinningBidderId(clientId);
                 itemsForSale.put(itemId, item);
             }
         }
     }
-
+    
     private void cancel(String itemId)
             throws Exception
     {
@@ -331,7 +507,14 @@ public class Server
             if (!itemsForSale.containsKey(itemId))
                     throw new Exception("No such item on sale");
             else
-                    itemsForSale.remove(itemId);
+            {
+                Item item = itemsForSale.get(itemId);
+                
+                if (item.finished())
+                        throw new Exception("Will not remove expired item");
+                else
+                        itemsForSale.remove(itemId);
+            }
         }
     }
 
@@ -435,4 +618,5 @@ public class Server
 
         runServerOnTCPPort(tcpPortNumber);
     }
+
 }

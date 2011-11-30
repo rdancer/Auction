@@ -1,0 +1,24 @@
+Class documentation
+<---- javadoc command: ---->
+/System/Library/Java/JavaVirtualMachines/1.6.0.jdk/Contents/Home/bin/javadoc
+-author
+-version
+-nodeprecated
+-package
+-source
+1.6
+-noindex
+-notree
+-nohelp
+-nonavbar
+-d
+/Users/rdancer/Dropbox/Auction/doc
+-classpath
+/Applications/BlueJ.app/Contents/Resources/Java/bluejcore.jar:/Applications/BlueJ.app/Contents/Resources/Java/junit.jar:/Users/rdancer/Downloads/jgraphx/lib/jgraphx.jar:/Applications/BlueJ.app/Contents/Resources/Java/userlib/commons-cli-1.2.jar:/Applications/BlueJ.app/Contents/Resources/Java/userlib/commons-io-2.0.1.jar:/Users/rdancer/Dropbox/Auction
+/Users/rdancer/Dropbox/Auction/Client.java
+<---- end of javadoc command ---->
+Loading source file /Users/rdancer/Dropbox/Auction/Client.java...
+/Users/rdancer/Dropbox/Auction/Client.java:63: invalid method declaration; return type required
+            public run()
+                   ^
+1 error

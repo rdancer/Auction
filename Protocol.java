@@ -9,11 +9,12 @@
 public class Protocol
 {
     static final String PROTOCOL_NAME_AND_VERSION = "AUCTIONEER/0.1";
-    static final int DEFAULT_PORT_NUMBER = 31337;    
+    static final int DEFAULT_PORT_NUMBER = 1337;    
+    static final int UDP_PACKET_SIZE = 512;
     
     /**
      * Prevent instantiation
      */
     private Protocol(){}
-
+  
 }

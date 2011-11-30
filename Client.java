@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 public class Client
         extends ClientServer
 {
-    protected static final boolean DEFAULT_DEBUG_VALUE = false;
+    private static final boolean DEFAULT_DEBUG_VALUE = false;
     
     private static String clientId;
     //private String clientSecret;
@@ -33,10 +33,20 @@ public class Client
         socketIn = new BufferedReader(new InputStreamReader(
                 ioSocket.getInputStream()));
     
+        int udpPortNumber;                
+        try {
+            udpPortNumber = bindToUdpPort();        
+        } catch (SocketException e) {
+            throw new Error(e);
+        }
                 
         String request = "";
         request += "HELLO " + Protocol.PROTOCOL_NAME_AND_VERSION + "\r\n";
-        request += "ID " + clientId + "\r\n";
+        if (udpPortNumber >= 1 || udpPortNumber <= 65535)
+                request += "ID " + clientId + "\r\n";
+        else
+                log("UDP port out of range: " + udpPortNumber);
+        request += "UDP " + udpPortNumber + "\r\n";        
         // XXX out.println("PASS " + clientPassPhrase + "\r\n");
         request += "THANKS\r\n";
         
@@ -50,6 +60,61 @@ public class Client
         {
             System.out.println("Logged in!");
         }
+    }
+    
+    private int bindToUdpPort()
+            throws SocketException
+    {
+        DatagramSocket trySocket = null;
+        int portNumber;
+        for (portNumber = Protocol.DEFAULT_PORT_NUMBER; portNumber <= 65535; portNumber++)
+        {
+            try
+            {
+                trySocket = new DatagramSocket(portNumber);
+                log("Bound to UDP port " + portNumber);
+                log("However the socket thinks it is on port " + trySocket.getPort());
+                break;
+            }
+            catch (SocketException e)
+            {
+                continue;
+            }
+        }
+        if (trySocket == null)
+                throw new SocketException("Ran out of port numbers");
+        
+        final DatagramSocket socket = trySocket;
+        
+        Thread listenAndAlertUser = new Thread() {
+            public void run()
+            {
+                byte[] buffer = new byte[Protocol.UDP_PACKET_SIZE];
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                for (;;)
+                {
+                    try {
+                        socket.receive(packet);
+                        log("Received a UDP packet...");
+                    } catch (Exception e) {
+                        log("Exception receiving UDP packet: " + e.getMessage());
+                    }
+                    
+                    String message = new String(packet.getData(), 0, packet.getLength());
+                    Map<String,String> labelValuePairs = parseResponse(message);
+                    if (labelValuePairs.containsKey("ALERT"))
+                    {
+                        log("Received an alert, displaying...");
+                        String alert = labelValuePairs.get("ALERT");
+                        System.out.println("Alert: " + alert); // Just print it; let's hope for line buffering
+                    }
+                }
+            }
+        };
+        
+        listenAndAlertUser.start();
+        
+        return portNumber;
     }
     
     protected String readWholeMessage()
@@ -67,14 +132,11 @@ public class Client
     {
         System.out.println("Type \"help\" for the list of available commands");                    
         String line;
-        
-        System.out.print("> ");  // prompt
 
         Scanner in = new Scanner(System.in);
  
-        while (in.hasNextLine())
+        for (System.out.print("> "); in.hasNextLine(); System.out.print("> "))
         {
-           
             line = in.nextLine();
             Scanner lineScanner = new Scanner(line.trim());
             
@@ -89,7 +151,8 @@ public class Client
 
                 if (command.equals("quit") || command.equals("exit"))
                 {
-                    return;
+                    System.out.println("Good-bye!");
+                    System.exit(0);
                 }
                 else if (command.equals("list") && arguments.isEmpty())
                 {
@@ -128,10 +191,16 @@ public class Client
                         itemId = arguments.get(0);
                         amount = new BigDecimal(arguments.get(1));
                         if (arguments.size() > 2) throw new Exception("Too many arguments");
+                        // XXX fix this to match the name with an item id
+                        // so user can say: bid <ITEM_NAME> <AMOUNT>
+                        if (!itemId.matches("........-....-....-....-............"))
+                                throw new Exception("This doesn't look like an item id");
                     }
                     catch (Exception e)
                     {
                         System.err.println("Usage: bid <ITEM_ID> <AMOUNT>");
+                        System.err.println("Example: bid 762bbe09-db0e-4924-b6c0-ebcb02b79911 33.01"); 
+                        continue;
                     }
                     
                     try
@@ -201,14 +270,15 @@ public class Client
                         }
                     }
                 }
-                else if (command.equals("verbose") && arguments.isEmpty())
+                else if (command.equals("verbose"))
                 {
-                    System.out.println("I am being " + (debug ? "verbose" : "quiet"));                    
+                    debug = true;
+                    System.out.println("verbose on");
                 }
-                else if (command.equals("verbose") && arguments.size() == 1
-                        && arguments.get(0).matches("^(on|off)$"))
+                else if (command.equals("quiet"))
                 {
-                    debug = arguments.get(0).equals("on");
+                    debug = false;
+                    System.out.println("verbose off");                    
                 }
                 else if (command.toLowerCase().matches("help|h|\\?|hilfe"))
                 {
@@ -217,7 +287,10 @@ public class Client
                     System.out.println("sell                     Place an item up for sale");
                     System.out.println("bid <ITEM_ID> <AMOUNT>   Bid GBP AMOUNT on item ITEM_ID");
                     System.out.println("cancel <ITEM_ID>[, ...]  Remove one or more items from sale");
-                    System.out.println("verbose [on|off]         Show chatter with server and other extra info");
+                    System.out.println("verbose                  Show protocol chatter and log messages");
+                    System.out.println("quiet                    Stop being verbose");                    
+                    System.out.println("photo                    Display photo of everyone's favourite lecturer");
+                    System.out.println("ping [MESSAGE]           Ping the server");
                 }
                 else if (command.equals("ping"))
                 {
@@ -231,7 +304,13 @@ public class Client
                     } catch (Exception e) {
                         System.out.println("Error: " + e.getMessage());
                     }
-                    // Note: enable verbose (verbose on) to see the server reply
+                    if (!debug)
+                            System.out.println("Note: enable verbose (type \"verbose\") to enable server reply display");
+                }
+                else if (command.equals("photo"))
+                {
+                    for (String row : TestData.DATA.split("\n"))
+                            System.out.println(row);
                 }
                 else
                 {
@@ -239,7 +318,6 @@ public class Client
                     System.out.println("Type \"help\" for the list of available commands");                    
                 }
             }
-            System.out.print("> ");  // prompt
         }
         
 
@@ -307,8 +385,7 @@ public class Client
         if (response.containsKey("ID"))
                 System.out.println("Auction created, with ID: " + response.get("ID"));
         else if (response.containsKey("ERROR"))
-                throw new Exception("Failed to create auction"
-                        + " -- server said: " + response.get("ERROR"));
+                throw new Exception("Failed to create auction: " + response.get("ERROR"));
         else
                 throw new Exception("Failed to create auction");
     }
@@ -356,8 +433,7 @@ public class Client
             return map;
         }
         else if (response.containsKey("ERROR"))
-                throw new Exception("Failed to request canceling auction " + id
-                        + " -- server said: " + response.get("ERROR"));
+                throw new Exception("Failed to request canceling auction: " + response.get("ERROR"));
         else
                 throw new Exception("Failed to request canceling auction " + id);
     }
@@ -379,8 +455,7 @@ public class Client
         if (response.containsKey("OK"))
                 System.out.println("Action confirmed");
         else if (response.containsKey("ERROR"))
-                throw new Exception("Failed to confirm action"
-                        + " -- server said: " + response.get("ERROR"));
+                throw new Exception("Failed to confirm action: " + response.get("ERROR"));
         else
                 throw new Exception("Failed to confirm action");
     }

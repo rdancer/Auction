@@ -37,7 +37,6 @@ public class Item
     private boolean finished = false;
     public boolean finished() { return finished; }
     public void setFinished(boolean finished) { this.finished = finished; };
-    
 
     private static AtomicLong uniqueIdCounter = new AtomicLong();
 
@@ -209,12 +208,18 @@ public class Item
         s += "ID: " + getId() + "\n";
         s += "name: " + getName() + "\n";
         s += "price: " + (getPrice() == null ? "" : "GBP ") + getPrice() + "\n";
-        s += "auction ends: " + getAuctionEndTime() + "\n";
-        
-        // XXX
-        //s += "seller:    " + sellerId + "\n";
-        //s += "winning bidder: " + winningBidderId + "\n";
-        
+        if (finished())
+        {
+            s += "expired: yes\n";
+            s += "auction ended: " + getAuctionEndTime() + "\n";
+        }
+        else
+        {
+            s += "expired: no\n";
+            s += "auction ends: " + getAuctionEndTime() + "\n";
+        }
+        s += "winning bidder: " + (getWinningBidderId() == null ? "no bids" : getWinningBidderId()) + "\n";
+
         return s;
     }
     
