@@ -9,22 +9,21 @@ Unless stated otherwise, all files are Copyright © 2011 Jan Minář
 
 The deliverables of this assignment are:
 
-(1) Source code for the client ("bidder") and server ("auctioneer") programs
+(1) Source code for the client (bidder) and server (auctioneer) programs
 (2) 3-page report in MS-Word format
 
 
 USAGE
 
-There are two programs:
+Run the two programs like this:
 
-    (1) Client.java -- the client program
-    (2) Server.java -- the server program
+Server:
 
+    java Server <PORT>
 
-Run them like this:
+Client:
 
     java Client <HOST> <PORT> <CLIENT_ID>
-    java Server <PORT>
 
 You can run many clients in parallell connecting to the same HOST:PORT, i.e. to
 the same server.  Multiple clients can share one CLIENT_ID.
