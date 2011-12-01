@@ -27,8 +27,15 @@ public class Server
     private static ThreadLocal clientId = new ThreadLocal();
     private static String getClientId() { return (String) clientId.get(); }
     private static void setClientId(String clientId) { Server.clientId.set(clientId); }
-     
 
+    private static ThreadLocal socketInStorage = new ThreadLocal();
+    private static BufferedReader getSocketIn() { return (BufferedReader) socketInStorage.get(); }
+    private static void setSocketIn(BufferedReader reader) { socketInStorage.set(reader); }
+    
+    private static ThreadLocal socketOutStorage = new ThreadLocal();
+    private static PrintWriter getSocketOut() { return (PrintWriter) socketOutStorage.get(); }
+    private static void setSocketOut(PrintWriter writer) { socketOutStorage.set(writer); }
+    
     private static Thread expiredItemsChecker = new Thread() {
         public void run() {
             
@@ -197,13 +204,14 @@ public class Server
                 
                 public void run()
                 {
+                 
                     try {
                         System.out.println("Connection accepted.");
-                        socketOut = new PrintWriter(ioSocket.getOutputStream(), true);
-                        socketIn = new BufferedReader(new InputStreamReader(
-                                ioSocket.getInputStream()));
+                        setSocketOut(new PrintWriter(ioSocket.getOutputStream(), true));
+                        setSocketIn(new BufferedReader(new InputStreamReader(
+                                ioSocket.getInputStream())));
                         
-                        String firstLine = socketIn.readLine();
+                        String firstLine = getSocketIn().readLine();
                         if (!firstLine.trim().matches("HELLO " + Protocol.PROTOCOL_NAME_AND_VERSION))
                         {
                             respond("ERROR Protocol mismatch");
@@ -267,7 +275,7 @@ public class Server
         System.out.println("Waiting for commands from client...");
         String line;
         
-        Scanner in = new Scanner(socketIn);
+        Scanner in = new Scanner(getSocketIn());
  
         while (in.hasNextLine())
         {
@@ -575,12 +583,12 @@ public class Server
         
         log(message.replaceAll("^|(\n)(.)", "$1" + /* XXX sanitize */ getClientId() + " >>> $2"));                
         
-        socketOut.println(message);  // Can't use print(): it doesn't flush buffer, or something
+        getSocketOut().println(message);  // Can't use print(): it doesn't flush buffer, or something
     }
 
     protected String readWholeMessage()
     {
-        String message = readWholeMessage(socketIn);
+        String message = readWholeMessage(getSocketIn());
         
         log(message.replaceAll("^|(\n)(.)", "$1" + /* XXX sanitize */ getClientId() + " <<< $2"));
 
@@ -591,6 +599,9 @@ public class Server
      * XXX For some reason, opening a new scanner on socketIn is causing problems.
      * The following versions of the methods from above solve this issue by reusing
      * the scanner opened in the caller's context.  This is kludgy.
+     * 
+     * Note: This issue should be fixed now by making the socket-in/-out ThreadLocal
+     * -- TODO remove this kludge
      */
     
     /* ******************* Kludge begin ***************** */    

@@ -13,3 +13,5 @@ contrib/
 # BlueJ files -- keep them: why not?
 #*.ctxt
 #*.bluej
+# Some BlueJ temporary files
+_SHELL*.java

@@ -14,8 +14,7 @@ import java.math.BigDecimal;
 
 public abstract class ClientServer
 {
-    protected PrintWriter socketOut;
-    protected BufferedReader socketIn;
+
     protected static boolean debug;
     
   

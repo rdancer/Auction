@@ -17,6 +17,9 @@ public class Client
 {
     private static final boolean DEFAULT_DEBUG_VALUE = false;
     
+    protected PrintWriter socketOut;  // note: using this variable is not thread-safe
+    protected BufferedReader socketIn; // note: using this variable is not thread-safe
+    
     private static String clientId;
     //private String clientSecret;
     
@@ -491,7 +494,7 @@ public class Client
     public static void test()
             throws Exception
     {
-        main(new String[]{ "localhost", "" + Protocol.DEFAULT_PORT_NUMBER, "" + Math.random() * Integer.MAX_VALUE });
+        main(new String[]{ "localhost", "" + Protocol.DEFAULT_PORT_NUMBER, "" + (int)(Math.random() * Integer.MAX_VALUE) });
     }
     
     private List<Item> itemsForSale()
